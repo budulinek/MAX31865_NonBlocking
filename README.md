@@ -1,4 +1,4 @@
-# MAX31865 NonBlocking [![Build Status](https://github.com/adafruit/Adafruit_MAX31865/workflows/Arduino%20Library%20CI/badge.svg)](https://github.com/adafruit/Adafruit_MAX31865/actions)
+# MAX31865 NonBlocking
 
 This is the Adafruit MAX31865 Arduino Library 
 
