@@ -61,14 +61,13 @@ void setup() {
 }
 
 void loop() {
-  // Read and print temperature and faults (non-blocking)
-  readRtd();
+  // non-blocking state machine, read and print temperature and faults
+  stateMachine();
 
   // Place your other functions here...
-
 }
 
-void readRtd() {
+void stateMachine() {
   if (rtdTimer.isOver() == false) {
     return;
   }
@@ -89,45 +88,8 @@ void readRtd() {
       break;
     case 2:
       {
-        uint16_t rtdVal = rtd.getRTD();
-
-        Serial.print("RTD value: ");
-        Serial.println(rtdVal);
-        float ratio = rtdVal;
-        ratio /= 32768;
-        Serial.print("Ratio = ");
-        Serial.println(ratio, 8);
-        Serial.print("Resistance = ");
-        Serial.println(RREF * ratio, 8);
-        Serial.print("Temperature = ");
-        Serial.println(rtd.getTemp(RNOMINAL, RREF));
-
-        // Check and print any faults
-        uint8_t fault = rtd.getFault();
-        if (fault) {
-          Serial.print("Fault 0x");
-          Serial.println(fault, HEX);
-          if (fault & MAX31865::FAULT_HIGHTHRESH_BIT) {
-            Serial.println("RTD High Threshold");
-          }
-          if (fault & MAX31865::FAULT_LOWTHRESH_BIT) {
-            Serial.println("RTD Low Threshold");
-          }
-          if (fault & MAX31865::FAULT_REFINLOW_BIT) {
-            Serial.println("REFIN- > 0.85 x Bias");
-          }
-          if (fault & MAX31865::FAULT_REFINHIGH_BIT) {
-            Serial.println("REFIN- < 0.85 x Bias - FORCE- open");
-          }
-          if (fault & MAX31865::FAULT_RTDINLOW_BIT) {
-            Serial.println("RTDIN- < 0.85 x Bias - FORCE- open");
-          }
-          if (fault & MAX31865::FAULT_OVUV_BIT) {
-            Serial.println("Under/Over voltage");
-          }
-          rtd.clearFault();
-        }
-        Serial.println();
+        printTemp();
+        printFault();
 
         rtd.enableBias(false);  // disable bias voltage
         rtdTimer.sleep(1000);
@@ -137,4 +99,49 @@ void readRtd() {
     default:
       break;
   }
+}
+
+void printTemp() {
+  uint16_t rtdVal = rtd.getRTD();
+
+  Serial.print("RTD value: ");
+  Serial.println(rtdVal);
+  float ratio = rtdVal;
+  ratio /= 32768;
+  Serial.print("Ratio = ");
+  Serial.println(ratio, 8);
+  Serial.print("Resistance = ");
+  Serial.println(RREF * ratio, 8);
+  Serial.print("Temperature = ");
+  Serial.println(rtd.getTemp(RNOMINAL, RREF));
+}
+
+// Check and print any faults
+void printFault() {
+  uint8_t fault = rtd.getFault();
+
+  if (fault) {
+    Serial.print("Fault 0x");
+    Serial.println(fault, HEX);
+    if (fault & MAX31865::FAULT_HIGHTHRESH_BIT) {
+      Serial.println("RTD High Threshold");
+    }
+    if (fault & MAX31865::FAULT_LOWTHRESH_BIT) {
+      Serial.println("RTD Low Threshold");
+    }
+    if (fault & MAX31865::FAULT_REFINLOW_BIT) {
+      Serial.println("REFIN- > 0.85 x Bias");
+    }
+    if (fault & MAX31865::FAULT_REFINHIGH_BIT) {
+      Serial.println("REFIN- < 0.85 x Bias - FORCE- open");
+    }
+    if (fault & MAX31865::FAULT_RTDINLOW_BIT) {
+      Serial.println("RTDIN- < 0.85 x Bias - FORCE- open");
+    }
+    if (fault & MAX31865::FAULT_OVUV_BIT) {
+      Serial.println("Under/Over voltage");
+    }
+    rtd.clearFault();
+  }
+  Serial.println();
 }
