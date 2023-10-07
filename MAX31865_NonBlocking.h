@@ -48,6 +48,15 @@ public:
   /** Under/Over voltage */
   static constexpr uint8_t FAULT_OVUV_BIT = 0x04;
 
+  /* Config Masks */
+  static constexpr uint8_t CONFIG_VBIAS_BIT = 0x80;
+  static constexpr uint8_t CONFIG_CONVERSION_MODE_BIT = 0x40;
+  static constexpr uint8_t CONFIG_1SHOT_BIT = 0x20;
+  static constexpr uint8_t CONFIG_3WIRE_RTD_BIT = 0x10;
+  static constexpr uint8_t CONFIG_FAULT_DET_MASK_ = 0x0C;
+  static constexpr uint8_t CONFIG_FAULT_STATUS_BIT = 0x02;
+  static constexpr uint8_t CONFIG_FILTER_BIT = 0x01;
+
   /**************************************************************************/
   /*!
    Number of wires we have in our RTD setup
@@ -288,14 +297,6 @@ private:
   static constexpr uint8_t LOW_FAULT_THRESH_MSB_ADDR = 0x05;
   static constexpr uint8_t LOW_FAULT_THRESH_LSB_ADDR = 0x06;
   static constexpr uint8_t FAULT_STATUS_ADDR = 0x07;
-  /* Config Masks */
-  static constexpr uint8_t CONFIG_VBIAS_BIT = 0x80;
-  static constexpr uint8_t CONFIG_CONVERSION_MODE_BIT = 0x40;
-  static constexpr uint8_t CONFIG_1SHOT_BIT = 0x20;
-  static constexpr uint8_t CONFIG_3WIRE_RTD_BIT = 0x10;
-  static constexpr uint8_t CONFIG_FAULT_DET_MASK_ = 0x0C;
-  static constexpr uint8_t CONFIG_FAULT_STATUS_BIT = 0x02;
-  static constexpr uint8_t CONFIG_FILTER_BIT = 0x01;
 
   /**************************************************************************/
   /*!
