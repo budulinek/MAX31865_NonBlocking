@@ -23,13 +23,7 @@ Modified by budulinek for everyone.
 - modified API (function names), check source files for usage comments
 - simplified temperature calculation (provides accurate results from -60°C up to 850°C)
 
-For **single shot measurements**, follow these steps (see examples):
-1. **enableBias(true)** Enable bias voltage.
-2. Wait cca 10 ms ("10x the input time constant plus 1ms" according to specs).
-3. **singleConvert()** Trigger single shot measurement.
-4. Wait 65 ms.
-5. **getTemp()** Read temperature in °C.
-6. **enableBias(false)** Disable bias voltage.
+For **single shot measurements**, use the `isConversionComplete()` function. The function runs all stages of resistance conversion (enables bias voltage, runs fault cycle, triggers conversion, reads RTD data, disables bias voltage) and returns true once the conversion is complete. See the MAX31865_Single example.
 
 BSD license, check license.txt for more information
 All text above must be included in any redistribution

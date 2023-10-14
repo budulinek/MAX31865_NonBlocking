@@ -29,30 +29,6 @@ MAX31865 rtd(5);
 // use 100 for PT100, 1000 for PT1000
 #define RNOMINAL 1000
 
-// state machine
-byte state;
-
-// Timer class for non-blocking delays
-class Timer {
-private:
-  uint32_t timestampLastHitMs;
-  uint32_t sleepTimeMs;
-public:
-  boolean isOver();
-  void sleep(uint32_t sleepTimeMs);
-};
-boolean Timer::isOver() {
-  if ((uint32_t)(millis() - timestampLastHitMs) > sleepTimeMs) {
-    return true;
-  }
-  return false;
-}
-void Timer::sleep(uint32_t sleepTimeMs) {
-  this->sleepTimeMs = sleepTimeMs;
-  timestampLastHitMs = millis();
-}
-Timer rtdTimer;
-
 void setup() {
   Serial.begin(115200);
   Serial.println("MAX31865 PT1000 Sensor Test!");
@@ -61,65 +37,22 @@ void setup() {
 }
 
 void loop() {
-  // non-blocking state machine, read and print temperature and faults
-  stateMachine();
+  if (rtd.isConversionComplete() == true) {
+    readSensor();
 
-  // Place your other functions here...
-}
-
-void stateMachine() {
-  if (rtdTimer.isOver() == false) {
-    return;
-  }
-  switch (state) {
-    case 0:
-      {
-        rtd.enableBias(true);  // enable bias voltage
-        rtdTimer.sleep(10);    // and wait 10 ms
-        state++;
-      }
-      break;
-    case 1:
-      {
-        rtd.singleConvert();  // trigger single resistance conversion
-        rtdTimer.sleep(65);   // and wait 65 ms
-        state++;
-      }
-      break;
-    case 2:
-      {
-        printTemp();
-        printFault();
-
-        rtd.enableBias(false);  // disable bias voltage
-        rtdTimer.sleep(1000);
-        state = 0;
-      }
-      break;
-    default:
-      break;
+    delay(1000);
   }
 }
 
-void printTemp() {
-  uint16_t rtdVal = rtd.getRTD();
-
-  Serial.print("RTD value: ");
-  Serial.println(rtdVal);
-  float ratio = rtdVal;
-  ratio /= 32768;
-  Serial.print("Ratio = ");
-  Serial.println(ratio, 8);
+// Read and print temperature and faults (non-blocking)
+void readSensor() {
   Serial.print("Resistance = ");
-  Serial.println(RREF * ratio, 8);
+  Serial.println(rtd.getResistance(RREF));
   Serial.print("Temperature = ");
-  Serial.println(rtd.getTemp(RNOMINAL, RREF));
-}
+  Serial.println(rtd.getTemperature(RNOMINAL, RREF));
 
-// Check and print any faults
-void printFault() {
+  // Check and print any faults
   uint8_t fault = rtd.getFault();
-
   if (fault) {
     Serial.print("Fault 0x");
     Serial.println(fault, HEX);

@@ -38,25 +38,17 @@ void setup() {
 }
 
 void loop() {
-  // Read and print temperature and faults (non-blocking)
-  readRtd();
+  readSensor();
 
   delay(1000);
 }
 
-void readRtd() {
-  uint16_t rtdVal = rtd.getRTD();
-
-  Serial.print("RTD value: ");
-  Serial.println(rtdVal);
-  float ratio = rtdVal;
-  ratio /= 32768;
-  Serial.print("Ratio = ");
-  Serial.println(ratio, 8);
+// Read and print temperature and faults (non-blocking)
+void readSensor() {
   Serial.print("Resistance = ");
-  Serial.println(RREF * ratio, 8);
+  Serial.println(rtd.getResistance(RREF));
   Serial.print("Temperature = ");
-  Serial.println(rtd.getTemp(RNOMINAL, RREF));
+  Serial.println(rtd.getTemperature(RNOMINAL, RREF));
 
   // Check and print any faults
   uint8_t fault = rtd.getFault();

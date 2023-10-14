@@ -41,36 +41,6 @@ void MAX31865::begin(RtdWire wires, FilterFreq filter) {
   // Serial.println(readRegister8(CONFIG_ADDR), HEX);
 }
 
-uint8_t MAX31865::getFault(FaultCycle fault_cycle) {
-  if (fault_cycle) {
-    uint8_t cfg_reg = getConfig();
-    cfg_reg &= 0x11;  // mask out wire and filter bits
-    switch (fault_cycle) {
-      case FAULT_AUTO:
-        setConfig(cfg_reg | 0b10000100);
-        // delay(1); // TODO: ??
-        break;
-      case FAULT_MANUAL_RUN:
-        setConfig(cfg_reg | 0b10001000);
-        return 0;
-      case FAULT_MANUAL_FINISH:
-        setConfig(cfg_reg | 0b10001100);
-        return 0;
-      case FAULT_NONE:
-      default:
-        break;
-    }
-  }
-  return readRegister8(FAULT_STATUS_ADDR);
-}
-
-void MAX31865::clearFault(void) {
-  uint8_t t = getConfig();
-  t &= ~0x2C;
-  t |= CONFIG_FAULT_STATUS_BIT;
-  setConfig(t);
-}
-
 void MAX31865::setConfig(uint8_t cfg_reg) {
   writeRegister8(CONFIG_ADDR, cfg_reg);
 }
@@ -109,17 +79,8 @@ MAX31865::FilterFreq MAX31865::getFilter(void) {
   return (MAX31865::FilterFreq(getConfig() & CONFIG_FILTER_BIT));
 }
 
-void MAX31865::enableBias(bool b) {
-  uint8_t t = getConfig();
-  if (b) {
-    t |= CONFIG_VBIAS_BIT;  // enable bias
-  } else {
-    t &= ~CONFIG_VBIAS_BIT;  // disable bias
-  }
-  setConfig(t);
-}
-
 void MAX31865::autoConvert(bool b) {
+  _autoConvert = b;
   uint8_t t = getConfig();
   if (b) {
     t |= CONFIG_CONVERSION_MODE_BIT;  // enable continuous conversion
@@ -129,12 +90,61 @@ void MAX31865::autoConvert(bool b) {
   setConfig(t);
 }
 
-void MAX31865::singleConvert(void) {
-  uint8_t t = getConfig();
-  t |= CONFIG_1SHOT_BIT;
-  setConfig(t);
+bool MAX31865::isConversionComplete(void) {
+  if (_autoConvert == true) return true;
+  switch (_state) {
+    case 0:
+      {
+        clearFault();
+        uint8_t t = getConfig();
+        t |= CONFIG_VBIAS_BIT;  // enable bias
+        setConfig(t);
+        _chrono = millis();
+        _state++;
+      }
+      break;
+    case 1:
+      {
+        if ((uint32_t)(millis() - _chrono) > TIMEOUT_VBIAS) {
+          setFaultCycle(MAX31865::FAULT_AUTO);
+          _state++;
+        }
+      }
+      break;
+    case 2:
+      {
+        if (getFaultCycle() == MAX31865::FAULT_STATUS_FINISHED) {
+          uint8_t t = getConfig();
+          t |= CONFIG_1SHOT_BIT;
+          setConfig(t);
+          _state++;
+        }
+      }
+      break;
+    case 3:
+      {
+        // The CONFIG_1SHOT_BIT is a self-clearing bit. But it clears to 0 only
+        // when a new conversion result is available in the RTD Data Registers.
+        if ((getConfig() & CONFIG_1SHOT_BIT) == false) {
+          _rtd = readRegister16(RTD_MSB_ADDR);
+          _state++;
+        }
+      }
+      break;
+    case 4:
+      {
+        uint8_t t = getConfig();
+        t &= ~CONFIG_VBIAS_BIT;  // disable bias
+        setConfig(t);
+        _state = 0;
+        return true;
+      }
+      break;
+    default:
+      break;
+  }
+  return false;
 }
-
 
 void MAX31865::setThresholds(uint16_t lower, uint16_t upper) {
   writeRegister8(LOW_FAULT_THRESH_LSB_ADDR, lower & 0xFF);
@@ -151,21 +161,63 @@ uint16_t MAX31865::getUpperThreshold(void) {
   return readRegister16(HIGH_FAULT_THRESH_MSB_ADDR);
 }
 
-uint16_t MAX31865::getRTD(void) {
-  clearFault();
-  uint16_t rtd = readRegister16(RTD_MSB_ADDR);
-  _fault = rtd & 0x0001;
-  // remove fault
-  rtd >>= 1;
-  return rtd;
+void MAX31865::setFaultCycle(FaultCycle fault_cycle) {
+  if (fault_cycle) {
+    uint8_t cfg_reg = getConfig();
+    cfg_reg &= 0x11;  // mask out wire and filter bits
+    switch (fault_cycle) {
+      case FAULT_AUTO:
+        setConfig(cfg_reg | 0b10000100);
+        break;
+      case FAULT_MANUAL_RUN:
+        setConfig(cfg_reg | 0b10001000);
+        break;
+      case FAULT_MANUAL_FINISH:
+        setConfig(cfg_reg | 0b10001100);
+        break;
+      case FAULT_NONE:
+      default:
+        break;
+    }
+  }
 }
 
-float MAX31865::getTemp(uint16_t rNominal, uint16_t rReference) {
-  return calculateTemperature(getRTD(), rNominal, rReference);
+MAX31865::FaultCycleStatus MAX31865::getFaultCycle(void) {
+  uint8_t t = getConfig();
+  t &= CONFIG_FAULT_CYCLE_MASK;
+  t >>= 2;
+  return MAX31865::FaultCycleStatus(t);
 }
 
-float MAX31865::calculateTemperature(uint16_t rtdRaw, uint16_t rNominal,
-                                     uint16_t rReference) {
+uint8_t MAX31865::getFault(void) {
+  return readRegister8(FAULT_STATUS_ADDR);
+}
+
+void MAX31865::clearFault(void) {
+  uint8_t t = getConfig();
+  t &= ~CONFIG_1SHOT_BIT;         // Write a 0
+  t &= ~CONFIG_FAULT_CYCLE_MASK;  // Write a 0
+  t |= CONFIG_FAULT_CLEAR_BIT;    // Write a 1
+  setConfig(t);
+}
+
+float MAX31865::getResistance(uint16_t rReference) {
+  uint16_t rtdRaw;
+  if (_autoConvert == true) {
+    _rtd = readRegister16(RTD_MSB_ADDR);
+  }
+  rtdRaw = _rtd;
+
+  // Remove fault bit. This bit is set to 1 if there is an error in FAULTSTAT,
+  // so it does not provide any additional information.
+  // Use getFault() to read FAULTSTAT.
+  rtdRaw >>= 1;
+
+  return static_cast<float>(rReference) * static_cast<float>(rtdRaw) / RTD_MAX_VAL;
+}
+
+float MAX31865::getTemperature(uint16_t rNominal, uint16_t rReference) {
+
   float Z1, Z2, Z3, Z4, Rt, temp;
 
   Z1 = -RTD_A;
@@ -173,8 +225,8 @@ float MAX31865::calculateTemperature(uint16_t rtdRaw, uint16_t rNominal,
   Z3 = (4 * RTD_B) / static_cast<float>(rNominal);
   Z4 = 2 * RTD_B;
 
-  /* Measured resistance */
-  Rt = static_cast<float>(rReference) * static_cast<float>(rtdRaw) / RTD_MAX_VAL;
+  Rt = getResistance(rReference);
+
   /* Convert resistance to temperature */
   temp = (Z1 + sqrtf(Z2 + (Z3 * Rt))) / Z4;
   // if (temp < -12.5f) {
