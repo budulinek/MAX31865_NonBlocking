@@ -25,7 +25,7 @@
 
 #include <stdlib.h>
 
-void MAX31865::begin(RtdWire wires, FilterFreq filter) {
+void MAX31865::begin(RtdWire wires, FilterFreq filter, ConvMode mode) {
   _spi->begin();
   pinMode(_cs, OUTPUT);
 
@@ -33,20 +33,10 @@ void MAX31865::begin(RtdWire wires, FilterFreq filter) {
   clearFault();
   setConfig(0x00);
 
+  setBias(true);
   setWires(wires);
   setFilter(filter);
-
-
-  // Serial.print("config: ");
-  // Serial.println(readRegister8(CONFIG_ADDR), HEX);
-}
-
-void MAX31865::setConfig(uint8_t cfg_reg) {
-  writeRegister8(CONFIG_ADDR, cfg_reg);
-}
-
-uint8_t MAX31865::getConfig() {
-  return readRegister8(CONFIG_ADDR);
+  setConvMode(mode);
 }
 
 void MAX31865::setWires(RtdWire wires) {
@@ -60,13 +50,13 @@ void MAX31865::setWires(RtdWire wires) {
   setConfig(t);
 }
 
-MAX31865::RtdWire MAX31865::getWires(void) {
-  return (MAX31865::RtdWire(getConfig() & CONFIG_3WIRE_RTD_BIT));
+MAX31865::RtdWire MAX31865::getWires() {
+  return MAX31865::RtdWire((getConfig() & CONFIG_3WIRE_RTD_BIT) == true);
 }
 
 void MAX31865::setFilter(const FilterFreq filter) {
   uint8_t t = getConfig();
-  if (t & CONFIG_CONVERSION_MODE_BIT) return;
+  if (t & CONFIG_CONVERSION_MODE_BIT) return;  // Do not change the notch frequency while in continuous conversion mode.
   if (filter == FILTER_50HZ) {
     t |= CONFIG_FILTER_BIT;
   } else {
@@ -75,14 +65,13 @@ void MAX31865::setFilter(const FilterFreq filter) {
   setConfig(t);
 }
 
-MAX31865::FilterFreq MAX31865::getFilter(void) {
-  return (MAX31865::FilterFreq(getConfig() & CONFIG_FILTER_BIT));
+MAX31865::FilterFreq MAX31865::getFilter() {
+  return MAX31865::FilterFreq((getConfig() & CONFIG_FILTER_BIT) == true);
 }
 
-void MAX31865::autoConvert(bool b) {
-  _autoConvert = b;
+void MAX31865::setConvMode(ConvMode mode) {
   uint8_t t = getConfig();
-  if (b) {
+  if (mode == CONV_MODE_CONTINUOUS) {
     t |= CONFIG_CONVERSION_MODE_BIT;  // enable continuous conversion
   } else {
     t &= ~CONFIG_CONVERSION_MODE_BIT;  // disable continuous conversion
@@ -90,15 +79,41 @@ void MAX31865::autoConvert(bool b) {
   setConfig(t);
 }
 
-bool MAX31865::isConversionComplete(void) {
-  if (_autoConvert == true) return true;
+MAX31865::ConvMode MAX31865::getConvMode() {
+  return MAX31865::ConvMode((getConfig() & CONFIG_CONVERSION_MODE_BIT) == true);
+}
+
+void MAX31865::setBias(bool b) {
+  uint8_t t = getConfig();
+  if (b) {
+    t |= CONFIG_VBIAS_BIT;  // enable bias
+  } else {
+    t &= ~CONFIG_VBIAS_BIT;  // disable bias
+  }
+  setConfig(t);
+}
+
+bool MAX31865::getBias() {
+  return getConfig() & CONFIG_VBIAS_BIT;
+}
+
+void MAX31865::setConfig(uint8_t cfg_reg) {
+  writeRegister8(CONFIG_ADDR, cfg_reg);
+}
+
+uint8_t MAX31865::getConfig() {
+  return readRegister8(CONFIG_ADDR);
+}
+
+bool MAX31865::isConversionComplete() {
+  if (getConvMode() == MAX31865::CONV_MODE_CONTINUOUS) return true;
   switch (_state) {
     case 0:
       {
+        // clear FAULTSTAT register
         clearFault();
-        uint8_t t = getConfig();
-        t |= CONFIG_VBIAS_BIT;  // enable bias
-        setConfig(t);
+        // enable bias
+        setBias(true);
         _chrono = millis();
         _state++;
       }
@@ -106,7 +121,8 @@ bool MAX31865::isConversionComplete(void) {
     case 1:
       {
         if ((uint32_t)(millis() - _chrono) > TIMEOUT_VBIAS) {
-          setFaultCycle(MAX31865::FAULT_AUTO);
+          // run fault detection cycle with automatic delay
+          setFaultCycle(MAX31865::FAULT_AUTO_RUN);
           _state++;
         }
       }
@@ -114,6 +130,7 @@ bool MAX31865::isConversionComplete(void) {
     case 2:
       {
         if (getFaultCycle() == MAX31865::FAULT_STATUS_FINISHED) {
+          // trigger single shot conversion
           uint8_t t = getConfig();
           t |= CONFIG_1SHOT_BIT;
           setConfig(t);
@@ -126,18 +143,12 @@ bool MAX31865::isConversionComplete(void) {
         // The CONFIG_1SHOT_BIT is a self-clearing bit. But it clears to 0 only
         // when a new conversion result is available in the RTD Data Registers.
         if ((getConfig() & CONFIG_1SHOT_BIT) == false) {
-          _rtd = readRegister16(RTD_MSB_ADDR);
-          _state++;
+          // disable bias
+          setBias(false);
+          // conversion is finished, reset the state and return true
+          _state = 0;
+          return true;
         }
-      }
-      break;
-    case 4:
-      {
-        uint8_t t = getConfig();
-        t &= ~CONFIG_VBIAS_BIT;  // disable bias
-        setConfig(t);
-        _state = 0;
-        return true;
       }
       break;
     default:
@@ -153,47 +164,44 @@ void MAX31865::setThresholds(uint16_t lower, uint16_t upper) {
   writeRegister8(HIGH_FAULT_THRESH_MSB_ADDR, upper >> 8);
 }
 
-uint16_t MAX31865::getLowerThreshold(void) {
+uint16_t MAX31865::getLowerThreshold() {
   return readRegister16(LOW_FAULT_THRESH_MSB_ADDR);
 }
 
-uint16_t MAX31865::getUpperThreshold(void) {
+uint16_t MAX31865::getUpperThreshold() {
   return readRegister16(HIGH_FAULT_THRESH_MSB_ADDR);
 }
 
 void MAX31865::setFaultCycle(FaultCycle fault_cycle) {
-  if (fault_cycle) {
-    uint8_t cfg_reg = getConfig();
-    cfg_reg &= 0x11;  // mask out wire and filter bits
-    switch (fault_cycle) {
-      case FAULT_AUTO:
-        setConfig(cfg_reg | 0b10000100);
-        break;
-      case FAULT_MANUAL_RUN:
-        setConfig(cfg_reg | 0b10001000);
-        break;
-      case FAULT_MANUAL_FINISH:
-        setConfig(cfg_reg | 0b10001100);
-        break;
-      case FAULT_NONE:
-      default:
-        break;
-    }
+  uint8_t cfg_reg = getConfig();
+  cfg_reg &= 0x11;  // mask out wire and filter bits
+  switch (fault_cycle) {
+    case FAULT_AUTO_RUN:
+      setConfig(cfg_reg | 0b10000100);
+      break;
+    case FAULT_MANUAL_RUN:
+      setConfig(cfg_reg | 0b10001000);
+      break;
+    case FAULT_MANUAL_FINISH:
+      setConfig(cfg_reg | 0b10001100);
+      break;
+    default:
+      break;
   }
 }
 
-MAX31865::FaultCycleStatus MAX31865::getFaultCycle(void) {
+MAX31865::FaultCycleStatus MAX31865::getFaultCycle() {
   uint8_t t = getConfig();
   t &= CONFIG_FAULT_CYCLE_MASK;
   t >>= 2;
   return MAX31865::FaultCycleStatus(t);
 }
 
-uint8_t MAX31865::getFault(void) {
+uint8_t MAX31865::getFault() {
   return readRegister8(FAULT_STATUS_ADDR);
 }
 
-void MAX31865::clearFault(void) {
+void MAX31865::clearFault() {
   uint8_t t = getConfig();
   t &= ~CONFIG_1SHOT_BIT;         // Write a 0
   t &= ~CONFIG_FAULT_CYCLE_MASK;  // Write a 0
@@ -202,38 +210,54 @@ void MAX31865::clearFault(void) {
 }
 
 float MAX31865::getResistance(uint16_t rReference) {
-  uint16_t rtdRaw;
-  if (_autoConvert == true) {
-    _rtd = readRegister16(RTD_MSB_ADDR);
-  }
-  rtdRaw = _rtd;
+  uint16_t rtdRaw = readRegister16(RTD_MSB_ADDR);
 
   // Remove fault bit. This bit is set to 1 if there is an error in FAULTSTAT,
   // so it does not provide any additional information.
-  // Use getFault() to read FAULTSTAT.
+  // Use getFault() to read the FAULTSTAT register.
   rtdRaw >>= 1;
-
   return static_cast<float>(rReference) * static_cast<float>(rtdRaw) / RTD_MAX_VAL;
 }
 
-float MAX31865::getTemperature(uint16_t rNominal, uint16_t rReference) {
+float MAX31865::getTemperature(uint16_t rNominal, uint16_t rReference, MAX31865::CalcMethod method) {
 
   float Z1, Z2, Z3, Z4, Rt, temp;
+
+  Rt = getResistance(rReference);
+
+  if (method == MAX31865::CALC_LINEAR) {
+    Rt /= static_cast<float>(rNominal);
+    Rt *= 100.0f;
+    return 2.57559f * Rt - 257.339f;  // optimal coeficient values for -40°C to +85°C
+  }
 
   Z1 = -RTD_A;
   Z2 = RTD_A * RTD_A - (4 * RTD_B);
   Z3 = (4 * RTD_B) / static_cast<float>(rNominal);
   Z4 = 2 * RTD_B;
-
-  Rt = getResistance(rReference);
-
-  /* Convert resistance to temperature */
   temp = (Z1 + sqrtf(Z2 + (Z3 * Rt))) / Z4;
-  // if (temp < -12.5f) {
-  //   Rt /= static_cast<float>(rNominal);
-  //   Rt *= 100.0f;
-  //   temp = -242.97f + 2.2838f * Rt + 1.4727e-3f * Rt * Rt;
-  // }
+
+  if (method == MAX31865::CALC_POLY_ADVANCED) {
+    if (temp < 0) {
+      Rt /= static_cast<float>(rNominal);
+      Rt *= 100.0f;
+      float rpoly = Rt;
+      temp = -242.02f;
+      temp += 2.2228f * rpoly;
+      rpoly *= Rt;  // square
+      temp += 2.5859e-3f * rpoly;
+      rpoly *= Rt;  // ^3
+      temp -= 4.8260e-6f * rpoly;
+      rpoly *= Rt;  // ^4
+      temp -= 2.8183e-8f * rpoly;
+      rpoly *= Rt;  // ^5
+      temp += 1.5243e-10f * rpoly;
+
+      // temp = -242.97f
+      //        + 2.2838f * Rt
+      //        + 1.4727e-3f * Rt * Rt;
+    }
+  }
 
   return temp;
 }

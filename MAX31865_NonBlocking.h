@@ -74,14 +74,25 @@ public:
 
   /**************************************************************************/
   /*!
+   Conversion Mode.
+   Choose continuous conversion mode or single shot mode.
+  */
+  /**************************************************************************/
+  typedef enum {
+    /** “Normally Off” mode. 1-shot conversions may be initiated from this mode. */
+    CONV_MODE_SINGLE = 0,
+    /** Continuous (automatic) conversion mode */
+    CONV_MODE_CONTINUOUS = 1
+  } ConvMode;
+
+  /**************************************************************************/
+  /*!
    Fault Detection Cycle Control
   */
   /**************************************************************************/
   typedef enum {
-    /** No action */
-    FAULT_NONE,
-    /** Fault detection with automatic delay */
-    FAULT_AUTO,
+    /** Run fault detection with automatic delay */
+    FAULT_AUTO_RUN,
     /** Run fault detection with manual delay (cycle 1) */
     FAULT_MANUAL_RUN,
     /** Finish fault detection with manual delay (cycle 2) */
@@ -104,6 +115,20 @@ public:
     FAULT_STATUS_MANUAL_CYCLE2 = 3
   } FaultCycleStatus;
 
+  /**************************************************************************/
+  /*!
+   Calculation Method
+  */
+  /**************************************************************************/
+  typedef enum {
+    /** Linear equation (good approximation for -40°C to +85°C) */
+    CALC_LINEAR,
+    /** Callendar-Van Dusen equation (high precision for -70°C to +850°C) */
+    CALC_POLY_SIMPLE,
+    /** Callendar-Van Dusen equation - advanced resolution (high precision for -200°C to +850°C) */
+    CALC_POLY_ADVANCED,
+  } CalcMethod;
+
   MAX31865() {}
 
   /**************************************************************************/
@@ -118,20 +143,28 @@ public:
 
   /**************************************************************************/
   /*!
-    @brief Initialize the SPI interface and set the number of RTD wires used
-    @param wires Number of wires in enum format. Can be RTD_2WIRE,
-    RTD_3WIRE, or RTD_4WIRE
-    @param filter Notch frequency for the noise rejection filter.
-    Can be FILTER_50HZ or FILTER_60HZ
+    @brief Initialize the SPI interface and set the number of RTD wires used.
+    @param wires Number of wires in enum format:
+        @c RTD_2WIRE (default)
+        @c RTD_3WIRE
+        @c RTD_4WIRE
+    @param filter Notch frequency for the noise rejection filter:
+        @c FILTER_50HZ (default)
+        @c FILTER_60HZ
+    @param mode Conversion mode:
+        @c CONV_MODE_CONTINUOUS
+        @c CONV_MODE_SINGLE (default)
   */
   /**************************************************************************/
-  void begin(RtdWire wires = RTD_2WIRE, FilterFreq filter = FILTER_50HZ);
+  void begin(RtdWire wires = RTD_2WIRE, FilterFreq filter = FILTER_50HZ, ConvMode mode = CONV_MODE_SINGLE);
 
   /**************************************************************************/
   /*!
     @brief How many wires we have in our RTD setup.
-    @param wires Number of wires in enum format, can be RTD_2WIRE,
-    RTD_3WIRE, or RTD_4WIRE
+    @param wires Number of wires in enum format:
+        @c RTD_2WIRE
+        @c RTD_3WIRE
+        @c RTD_4WIRE
   */
   /**************************************************************************/
   void setWires(RtdWire wires);
@@ -139,17 +172,21 @@ public:
   /**************************************************************************/
   /*!
     @brief Reads number of configured wires.
-    @return Selected number of wires, can be RTD_2WIRE, RTD_3WIRE, or RTD_4WIRE
+    @return Number of wires in enum format:
+        - @c RTD_2WIRE
+        - @c RTD_3WIRE
+        - @c RTD_4WIRE
   */
   /**************************************************************************/
-  RtdWire getWires(void);
+  RtdWire getWires();
 
   /**************************************************************************/
   /*!
     @brief Choose notch frequency for the noise rejection filter.
-    Do not change the notch frequency while in auto conversion mode.
-    @param filter Notch frequency for the noise rejection filter.
-    Can be FILTER_50HZ or FILTER_60HZ
+    Do not change the notch frequency while in continuous conversion mode.
+    @param filter Notch frequency for the noise rejection filter:
+        @c FILTER_50HZ
+        @c FILTER_60HZ
   */
   /**************************************************************************/
   void setFilter(FilterFreq filter);
@@ -157,31 +194,60 @@ public:
   /**************************************************************************/
   /*!
     @brief Reads notch frequency for the noise rejection filter.
-    @return Selected notch frequency for the noise rejection filter.
-    Can be FILTER_50HZ or FILTER_60HZ
+    @return Notch frequency for the noise rejection filter:
+        - @c FILTER_50HZ
+        - @c FILTER_60HZ
   */
   /**************************************************************************/
-  FilterFreq getFilter(void);
+  FilterFreq getFilter();
 
   /**************************************************************************/
   /*!
-    @brief Enable automatic conversion mode, in which conversions occur continuously.
-    When automatic conversion mode is selected, bias voltage remains on continuously.
-    Therefore, auto conversion mode leads to self-heating of the RTD sensor.
-    @param b If true, continuous conversion is enabled
+    @brief Set the conversion mode.
+    @param mode Conversion mode:
+        @c CONV_MODE_CONTINUOUS: Conversions occur continuously at a 50/60Hz rate.
+        Bias voltage remains on continuously, leading to self-heating of the RTD sensor.
+        @c CONV_MODE_SINGLE: Conversions must be initiated by @ref isConversionComplete() function.
   */
   /**************************************************************************/
-  void autoConvert(bool b);
+  void setConvMode(ConvMode mode);
 
   /**************************************************************************/
   /*!
-    @brief Checks if resistance conversion is complete. Triggers single shot
-    conversion if autoConvert is disabled.
+    @brief Reads conversion mode.
+    @return Conversion mode:
+        @c CONV_MODE_CONTINUOUS
+        @c CONV_MODE_SINGLE
+  */
+  /**************************************************************************/
+  ConvMode getConvMode();
+
+  /**************************************************************************/
+  /*!
+    @brief Enable the bias voltage on the RTD sensor
+    @param b If true bias is enabled, else disabled
+  */
+  /**************************************************************************/
+  void setBias(bool b);
+
+  /**************************************************************************/
+  /*!
+    @brief Get the bias voltage setting
+    @return True if bias is enabled
+  */
+  /**************************************************************************/
+  bool getBias();
+
+  /**************************************************************************/
+  /*!
+    @brief The function runs all stages of single shot resistance conversion
+    (enables bias, runs fault cycle, triggers conversion, disables bias).
+    Bias voltage is disabled between 1-shot conversions to minimize self-heating.
     @return True if single shot resistance conversion is complete, always true
-    if autoConvert is enabled.
+    if conversion mode is set to CONV_MODE_CONTINUOUS.
   */
   /**************************************************************************/
-  bool isConversionComplete(void);
+  bool isConversionComplete();
 
   /**************************************************************************/
   /*!
@@ -199,7 +265,7 @@ public:
     @return The raw unsigned 16-bit value, NOT temperature!
   */
   /**************************************************************************/
-  uint16_t getLowerThreshold(void);
+  uint16_t getLowerThreshold();
 
   /**************************************************************************/
   /*!
@@ -207,25 +273,31 @@ public:
     @return The raw unsigned 16-bit value, NOT temperature!
   */
   /**************************************************************************/
-  uint16_t getUpperThreshold(void);
+  uint16_t getUpperThreshold();
 
   /**************************************************************************/
   /*!
-    @brief Sets the fault detection cycle type (and also enables bias voltage)
-    @param fault_cycle The fault cycle type to run. Can be FAULT_NONE,
-    FAULT_AUTO, FAULT_MANUAL_RUN, or FAULT_MANUAL_FINISH
+    @brief Triggers the fault detection cycle (and also enables bias voltage)
+    @param fault_cycle The fault cycle type to run:
+        @c FAULT_AUTO_RUN (default): Run fault detection with automatic delay
+        @c FAULT_MANUAL_RUN: Run fault detection with manual delay (cycle 1)
+        @c FAULT_MANUAL_FINISH: Finish fault detection with manual delay (cycle 2)
   */
   /**************************************************************************/
-  void setFaultCycle(FaultCycle fault_cycle = FAULT_AUTO);
+  void setFaultCycle(FaultCycle fault_cycle = FAULT_AUTO_RUN);
 
   /**************************************************************************/
   /*!
     @brief Reads the fault detection cycle status
-    @return Fault detection cycle status, can be FAULT_STATUS_FINISHED,
-    FAULT_STATUS_AUTO_RUNNING, FAULT_STATUS_MANUAL_CYCLE1, FAULT_STATUS_MANUAL_CYCLE2
+    @return Fault detection cycle status:
+        @c FAULT_STATUS_FINISHED: Fault detection finished
+        @c FAULT_STATUS_AUTO_RUNNING: Automatic fault detection still running
+        @c FAULT_STATUS_MANUAL_CYCLE1: Manual cycle 1 still running
+        waiting for user to write setFaultCycle(MAX31865::FAULT_MANUAL_FINISH)
+        @c FAULT_STATUS_MANUAL_CYCLE2: Manual cycle 2 still running
   */
   /**************************************************************************/
-  FaultCycleStatus getFaultCycle(void);
+  FaultCycleStatus getFaultCycle();
 
   /**************************************************************************/
   /*!
@@ -233,28 +305,28 @@ public:
     @return The raw unsigned 8-bit FAULT status register
   */
   /**************************************************************************/
-  uint8_t getFault(void);
+  uint8_t getFault();
 
   /**************************************************************************/
   /*!
     @brief Clear all faults in FAULTSTAT
   */
   /**************************************************************************/
-  void clearFault(void);
+  void clearFault();
 
   /**************************************************************************/
   /*!
     @brief Read the RTD sensor's resistance
     @param rReference Resistance of the reference resistor, usually
     430 or 4300
-    @returns Resistance in Ohm
+    @return Resistance in Ohm
   */
   /**************************************************************************/
   float getResistance(uint16_t rReference);
 
   /**************************************************************************/
   /*!
-    @brief Read the temperature in C from the RTD through calculation of the
+    @brief Read the temperature in °C from the RTD through calculation of the
     resistance. Uses
    http://www.analog.com/media/en/technical-documentation/application-notes/AN709_0.pdf
    technique
@@ -262,10 +334,17 @@ public:
     or 1000
     @param rReference Resistance of the reference resistor, usually
     430 or 4300
-    @returns Temperature in °C
+    @param method Calculation method:
+        @c CALC_LINEAR: Linear equation
+        (good approximation for -40°C to +85°C)
+        @c CALC_POLY_SIMPLE (default): Callendar-Van Dusen equation
+        (high precision for -70°C to +850°C)
+        @c CALC_POLY_ADVANCED: Callendar-Van Dusen equation - advanced resolution
+        (high precision for -200°C to +850°C)
+    @return Temperature in °C
   */
   /**************************************************************************/
-  float getTemperature(uint16_t rNominal, uint16_t rReference);
+  float getTemperature(uint16_t rNominal, uint16_t rReference, MAX31865::CalcMethod method = CALC_POLY_SIMPLE);
 
 private:
   /* Communication */
@@ -275,9 +354,7 @@ private:
   uint8_t _state;
   uint32_t _chrono;
   /* Data */
-  bool _autoConvert;
-  uint16_t _rtd;
-  static constexpr uint32_t TIMEOUT_VBIAS = 15;
+  static constexpr uint32_t TIMEOUT_VBIAS = 15;  // bias voltage timeout in ms
   static constexpr float RTD_MAX_VAL = 32768.0f;
   static constexpr float RTD_A = 3.9083e-3;
   static constexpr float RTD_B = -5.775e-7;
@@ -313,7 +390,7 @@ private:
     @return The raw unsigned 8-bit CONFIG register
   */
   /**************************************************************************/
-  uint8_t getConfig(void);
+  uint8_t getConfig();
 
   void readRegisterN(const uint8_t addr, uint8_t *const data, const uint8_t count);
 

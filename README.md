@@ -1,6 +1,6 @@
 # MAX31865 NonBlocking
 
-This is the Adafruit MAX31865 Arduino Library 
+Based on the Adafruit MAX31865 Arduino Library
 
 <a href="https://www.adafruit.com/products/3328"><img src="assets/image.jpg" height="300"/></a>
 
@@ -18,12 +18,12 @@ Modified by budulinek for everyone.
 ### Changes to the original Adafruit library:
 - non-blocking automatic conversion mode
 - non-blocking single shot conversion mode
-- no software (bitbang) SPI, only hardware SPI
-- uses standard SPI.h library
-- modified API (function names), check source files for usage comments
-- simplified temperature calculation (provides accurate results from -60°C up to 850°C)
+- lightweight
+- uses standard SPI.h library, selectable SPI port
+- modified API (check examples and source files for usage instructions)
+- selectable temperature calculation method, default setting (simplified Callendar-Van Dusen equation) provides high precision for -70°C to +850°C.
 
-For **single shot measurements**, use the `isConversionComplete()` function. The function runs all stages of resistance conversion (enables bias voltage, runs fault cycle, triggers conversion, reads RTD data, disables bias voltage) and returns true once the conversion is complete. See the MAX31865_Single example.
+For **single shot measurements**, use the `isConversionComplete()` function. The function runs all stages of resistance conversion (enables bias voltage, runs fault cycle, triggers conversion, disables bias voltage) and returns true once the conversion is complete. Once the function returns true, you can `getResistance()` or `getTemperature()`. See the MAX31865_Single example.
 
 BSD license, check license.txt for more information
 All text above must be included in any redistribution

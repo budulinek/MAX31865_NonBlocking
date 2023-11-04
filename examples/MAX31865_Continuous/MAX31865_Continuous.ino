@@ -20,7 +20,7 @@
 
 // uses hardware SPI, just pass in the CS pin (mandatory) and SPI bus (optional)
 // MAX31865 rtd(5, &SPI);
-MAX31865 rtd(5);
+MAX31865 rtd(6);
 
 // Resistance of the reference resistor. Check Rref resistor value on your module,
 // should be 430 for PT100 and 4300 for PT1000
@@ -33,8 +33,15 @@ void setup() {
   Serial.begin(115200);
   Serial.println("MAX31865 PT1000 Sensor Test!");
 
-  rtd.begin(MAX31865::RTD_3WIRE, MAX31865::FILTER_50HZ);
-  rtd.autoConvert(true);
+  /*!
+    Default settings are:
+     rtd.begin(MAX31865::RTD_2WIRE, MAX31865::FILTER_50HZ, MAX31865::CONV_MODE_SINGLE);
+    You can set your configuration through begin, such as:
+     rtd.begin(MAX31865::RTD_3WIRE)
+    or later through setWires(), setFilter() or setConvMode() functions
+  */
+  rtd.begin();
+  rtd.setConvMode(MAX31865::CONV_MODE_CONTINUOUS);
 }
 
 void loop() {
@@ -46,9 +53,11 @@ void loop() {
 // Read and print temperature and faults (non-blocking)
 void readSensor() {
   Serial.print("Resistance = ");
-  Serial.println(rtd.getResistance(RREF));
+  Serial.print(rtd.getResistance(RREF));
+  Serial.println(" Ω");
   Serial.print("Temperature = ");
-  Serial.println(rtd.getTemperature(RNOMINAL, RREF));
+  Serial.print(rtd.getTemperature(RNOMINAL, RREF));
+  Serial.println("°C");
 
   // Check and print any faults
   uint8_t fault = rtd.getFault();
