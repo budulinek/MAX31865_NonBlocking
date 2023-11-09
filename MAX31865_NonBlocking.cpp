@@ -33,7 +33,6 @@ void MAX31865::begin(RtdWire wires, FilterFreq filter, ConvMode mode) {
   clearFault();
   setConfig(0x00);
 
-  setBias(true);
   setWires(wires);
   setFilter(filter);
   setConvMode(mode);
@@ -73,8 +72,10 @@ void MAX31865::setConvMode(ConvMode mode) {
   uint8_t t = getConfig();
   if (mode == CONV_MODE_CONTINUOUS) {
     t |= CONFIG_CONVERSION_MODE_BIT;  // enable continuous conversion
+    t |= CONFIG_VBIAS_BIT;            // enable bias
   } else {
     t &= ~CONFIG_CONVERSION_MODE_BIT;  // disable continuous conversion
+    t &= ~CONFIG_VBIAS_BIT;            // disable bias
   }
   setConfig(t);
 }
